@@ -338,6 +338,7 @@
               <span class="small">${req.hours} h · ${req.description}</span>
               <div style="margin-top:10px;">
                 <button class="btn btn-success" onclick="approveRequest('${req.id}')">Schválit</button>
+                <button class="btn btn-danger" onclick="rejectRequest('${req.id}')">Odmítnout</button>
               </div>
             </div>
           `).join('');
@@ -346,7 +347,7 @@
           pending.innerHTML = own.map(req => `
             <div class="card" style="margin-top:10px;">
               <strong>${req.description}</strong><br>
-              <span class="small">${req.hours} h · ${req.status === 'approved' ? 'Schváleno' : 'Čeká na schválení'}</span>
+              <span class="small">${req.hours} h · ${req.status === 'approved' ? 'Schváleno' : req.status === 'rejected' ? 'Odmítnuto' : 'Čeká na schválení'}</span>
             </div>
           `).join('');
         }
@@ -569,7 +570,7 @@
 
       window.approveRequest = (id) => {
         const req = state.hoursRequests.find(r => r.id === id);
-        if (!req) return;
+        if (!req || req.status !== 'pending') return;
         const user = state.users.find(u => u.email === req.userEmail);
         if (user) {
           const newHours = (user.hours || 0) + Number(req.hours || 0);
@@ -579,10 +580,21 @@
           user.level = Math.floor(newXp / 100) + 1;
           req.status = 'approved';
           req.approvedAt = new Date().toISOString();
+          delete req.rejectedAt;
           if (state.currentUser?.id === user.id) {
             state.currentUser = { ...user };
           }
         }
+        saveData();
+        render();
+      };
+
+      window.rejectRequest = (id) => {
+        const req = state.hoursRequests.find(r => r.id === id);
+        if (!req || req.status !== 'pending') return;
+        req.status = 'rejected';
+        req.rejectedAt = new Date().toISOString();
+        delete req.approvedAt;
         saveData();
         render();
       };
