@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>NouCz Vrata</title>
+    <title>NouCZ Vrata</title>
     <style>
       :root {
         --bg: #07111d;
@@ -55,7 +55,7 @@
   </head>
   <body>
     <div id="authView" class="auth-card card">
-      <h2>NouCz Vrata</h2>
+      <h2>NouCZ Vrata</h2>
       <p class="small">Správa výroby vrat, bran a plotů</p>
       <div class="row">
         <button class="btn btn-primary" onclick="showAuth('login')">Přihlásit</button>
@@ -82,7 +82,7 @@
 
     <div id="appView" class="app-shell hidden">
       <aside class="sidebar">
-        <h1>NouCz Vrata</h1>
+        <h1>NouCZ Vrata</h1>
         <button class="nav-btn active" onclick="showSection('dashboard')">Dashboard</button>
         <button class="nav-btn" onclick="showSection('employees')">Pracovníci</button>
         <button class="nav-btn" onclick="showSection('hours')">Zápis hodin</button>
@@ -164,7 +164,7 @@
       import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
       import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
-      const STORAGE_KEY = 'NouCz Vrata-hub-state-v1';
+      const STORAGE_KEY = 'noucz-vrata-state-v1';
       const firebaseConfig = {
         apiKey: 'AIzaSyCx3d-_EKf7HeYNgMrNc3HP3FZtqnVPogI',
         authDomain: 'nouprace-d0ba3.firebaseapp.com',
@@ -198,7 +198,7 @@
       function getDefaultData() {
         return {
           users: [
-            { id: 'NouCz', name: 'Admin', email: 'nou@nou.cz', password: 'grundel6', role: 'admin', xp: 0, level: 0, hours: 0, avatar: '' },
+            { id: 'NouCz', name: 'Nou', email: 'nou@nou.cz', password: 'grundel6', role: 'admin', xp: 0, level: 0, hours: 0, avatar: '' },
           ],
           inventory: [
             { id: 'inv-1', name: 'Modřín', category: 'Dřevo', size: 'standard', quantity: 120, unit: 'm' },
@@ -210,7 +210,7 @@
             { id: 'proj-1', name: 'Projekt A', type: 'Vrata', items: [{ name: 'Modřín', quantity: 12, unit: 'm' }, { name: 'Pásovina', quantity: 4, unit: 'ks' }], done: false }
           ],
           hoursRequests: [
-            { id: 'req-1', userEmail: 'nou@nou.cz', hours: 6, description: 'Montáž brány', status: 'pending', createdAt: new Date().toISOString() }
+            { id: 'req-1', userEmail: 'nou@nou.cz.cz', hours: 6, description: 'Montáž brány', status: 'pending', createdAt: new Date().toISOString() }
           ]
         };
       }
@@ -232,6 +232,14 @@
           state.inventory = data.inventory || [];
           state.projects = data.projects || [];
           state.hoursRequests = data.hoursRequests || [];
+
+          const authUserId = data.authUserId;
+          if (authUserId) {
+            const persistedUser = state.users.find(user => user.id === authUserId || user.uid === authUserId || user.email === authUserId);
+            if (persistedUser) {
+              state.currentUser = { ...persistedUser };
+            }
+          }
         } catch (error) {
           console.warn('Nepodařilo se načíst data', error);
           const data = getDefaultData();
@@ -243,7 +251,13 @@
       }
 
       function saveData() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: state.users, inventory: state.inventory, projects: state.projects, hoursRequests: state.hoursRequests }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          users: state.users,
+          inventory: state.inventory,
+          projects: state.projects,
+          hoursRequests: state.hoursRequests,
+          authUserId: state.currentUser ? (state.currentUser.id || state.currentUser.uid || state.currentUser.email) : null
+        }));
       }
 
       function showSection(section) {
@@ -527,6 +541,7 @@
           await signOut(auth);
         }
         state.currentUser = null;
+        saveData();
         document.getElementById('authView').classList.remove('hidden');
         document.getElementById('appView').classList.add('hidden');
         render();
@@ -627,7 +642,14 @@
       window.addEventListener('DOMContentLoaded', () => {
         loadData();
         showSection('dashboard');
-        showAuth('login');
+        if (state.currentUser) {
+          document.getElementById('authView').classList.add('hidden');
+          document.getElementById('appView').classList.remove('hidden');
+        } else {
+          showAuth('login');
+          document.getElementById('authView').classList.remove('hidden');
+          document.getElementById('appView').classList.add('hidden');
+        }
         render();
       });
     </script>
