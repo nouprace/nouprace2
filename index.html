@@ -262,17 +262,31 @@
         };
       }
 
-      function applyLoadedData(data) {
-        state.users = normalizeUsers(data.users || []);
+      function applyLoadedData(data, skipCurrentUser = false) {
+        // Merguj uživatele místo aby se přepsal
+        const loadedUsers = normalizeUsers(data.users || []);
+        const emailSet = new Set(loadedUsers.map(u => (u.email || '').toLowerCase()));
+        
+        // Přidej stávající uživatele, kterí nejsou v loadedUsers
+        for (const user of state.users) {
+          if (!emailSet.has((user.email || '').toLowerCase())) {
+            loadedUsers.push(user);
+          }
+        }
+        
+        state.users = normalizeUsers(loadedUsers);
         state.inventory = data.inventory || [];
         state.projects = data.projects || [];
         state.hoursRequests = data.hoursRequests || [];
 
-        const authUserId = data.authUserId;
-        if (authUserId) {
-          const persistedUser = state.users.find(user => user.id === authUserId || user.uid === authUserId || user.email === authUserId);
-          if (persistedUser) {
-            state.currentUser = normalizeUser({ ...persistedUser });
+        // Neměnit currentUser při načítání, jen pokud je potřeba inicializace
+        if (!skipCurrentUser) {
+          const authUserId = data.authUserId;
+          if (authUserId && !state.currentUser) {
+            const persistedUser = state.users.find(user => user.id === authUserId || user.uid === authUserId || user.email === authUserId);
+            if (persistedUser) {
+              state.currentUser = normalizeUser({ ...persistedUser });
+            }
           }
         }
       }
@@ -282,7 +296,7 @@
           try {
             const snap = await getDoc(doc(db, 'app', 'sharedState'));
             if (snap.exists()) {
-              applyLoadedData(snap.data());
+              applyLoadedData(snap.data(), true);
               await saveData();
               return;
             }
@@ -294,17 +308,17 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) {
           const data = getDefaultData();
-          applyLoadedData(data);
+          applyLoadedData(data, true);
           await saveData();
           return;
         }
         try {
           const data = JSON.parse(raw);
-          applyLoadedData(data);
+          applyLoadedData(data, true);
         } catch (error) {
           console.warn('Nepodařilo se načíst data', error);
           const data = getDefaultData();
-          applyLoadedData(data);
+          applyLoadedData(data, true);
         }
       }
 
@@ -630,6 +644,16 @@
 
       async function loginUser(email, password) {
         if (firebaseReady && auth) {
+          // Loadnout všechny existující uživatele z Firestore PŘED přihlášením
+          try {
+            const snap = await getDoc(doc(db, 'app', 'sharedState'));
+            if (snap.exists()) {
+              applyLoadedData(snap.data(), true);
+            }
+          } catch (error) {
+            console.warn('Nepodařilo se loadovat uživatele', error);
+          }
+
           const cred = await signInWithEmailAndPassword(auth, email, password);
           const profile = await getUserProfile(cred.user.uid, cred.user.email);
           const normalizedProfile = normalizeUser({
@@ -668,6 +692,16 @@
         const role = getUserRole({ email });
 
         if (firebaseReady && auth) {
+          // Loadnout všechny existující uživatele z Firestore PŘED registrací
+          try {
+            const snap = await getDoc(doc(db, 'app', 'sharedState'));
+            if (snap.exists()) {
+              applyLoadedData(snap.data(), true);
+            }
+          } catch (error) {
+            console.warn('Nepodařilo se loadovat uživatele', error);
+          }
+
           const cred = await createUserWithEmailAndPassword(auth, email, password);
           const profile = normalizeUser({ uid: cred.user.uid, id: cred.user.uid, name, email, role, xp: 0, level: 1, hours: 0, avatar: '' });
           await setDoc(doc(db, 'users', cred.user.uid), profile);
@@ -911,7 +945,7 @@
 
           onSnapshot(doc(db, 'app', 'sharedState'), (snap) => {
             if (snap.exists()) {
-              applyLoadedData(snap.data());
+              applyLoadedData(snap.data(), true);
               render();
             }
           });
