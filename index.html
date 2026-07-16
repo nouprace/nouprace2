@@ -183,7 +183,7 @@
     <script type="module">
       import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
       import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-      import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
+      import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
       const STORAGE_KEY = 'noucz-vrata-state-v1';
       const firebaseConfig = {
@@ -214,7 +214,7 @@
       }
 
       function isFirebaseConfigured() {
-        return Boolean(firebaseConfig.apiKey && firebaseConfig.apiKey !== 'AIzaSyCx3d-_EKf7HeYNgMrNc3HP3FZtqnVPogI' && firebaseConfig.projectId && firebaseConfig.projectId !== 'nouprace-d0ba3');
+        return Boolean(firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId);
       }
 
       function getDefaultData() {
@@ -237,49 +237,73 @@
         };
       }
 
-      function loadData() {
+      function applyLoadedData(data) {
+        state.users = data.users || [];
+        state.inventory = data.inventory || [];
+        state.projects = data.projects || [];
+        state.hoursRequests = data.hoursRequests || [];
+
+        const authUserId = data.authUserId;
+        if (authUserId) {
+          const persistedUser = state.users.find(user => user.id === authUserId || user.uid === authUserId || user.email === authUserId);
+          if (persistedUser) {
+            state.currentUser = { ...persistedUser };
+          }
+        }
+      }
+
+      async function loadData() {
+        if (firebaseReady && db) {
+          try {
+            const snap = await getDoc(doc(db, 'app', 'sharedState'));
+            if (snap.exists()) {
+              applyLoadedData(snap.data());
+              await saveData();
+              return;
+            }
+          } catch (error) {
+            console.warn('Nepodařilo se načíst sdílená data z Firestore', error);
+          }
+        }
+
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) {
           const data = getDefaultData();
-          state.users = data.users;
-          state.inventory = data.inventory;
-          state.projects = data.projects;
-          state.hoursRequests = data.hoursRequests;
-          saveData();
+          applyLoadedData(data);
+          await saveData();
           return;
         }
         try {
           const data = JSON.parse(raw);
-          state.users = data.users || [];
-          state.inventory = data.inventory || [];
-          state.projects = data.projects || [];
-          state.hoursRequests = data.hoursRequests || [];
-
-          const authUserId = data.authUserId;
-          if (authUserId) {
-            const persistedUser = state.users.find(user => user.id === authUserId || user.uid === authUserId || user.email === authUserId);
-            if (persistedUser) {
-              state.currentUser = { ...persistedUser };
-            }
-          }
+          applyLoadedData(data);
         } catch (error) {
           console.warn('Nepodařilo se načíst data', error);
           const data = getDefaultData();
-          state.users = data.users;
-          state.inventory = data.inventory;
-          state.projects = data.projects;
-          state.hoursRequests = data.hoursRequests;
+          applyLoadedData(data);
         }
       }
 
-      function saveData() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      async function saveData() {
+        const payload = {
           users: state.users,
           inventory: state.inventory,
           projects: state.projects,
           hoursRequests: state.hoursRequests,
           authUserId: state.currentUser ? (state.currentUser.id || state.currentUser.uid || state.currentUser.email) : null
-        }));
+        };
+
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+
+        if (firebaseReady && db) {
+          try {
+            await setDoc(doc(db, 'app', 'sharedState'), {
+              ...payload,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          } catch (error) {
+            console.warn('Nepodařilo se synchronizovat data do Firestore', error);
+          }
+        }
       }
 
       function showSection(section) {
@@ -583,14 +607,14 @@
           const cred = await signInWithEmailAndPassword(auth, email, password);
           const profile = await getUserProfile(cred.user.uid);
           state.currentUser = { uid: cred.user.uid, email: cred.user.email, ...(profile || { name: cred.user.email, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' }) };
-          saveData();
+          await saveData();
           return state.currentUser;
         }
 
         const user = state.users.find(u => u.email === email && u.password === password);
         if (!user) return null;
         state.currentUser = { ...user };
-        saveData();
+        await saveData();
         return state.currentUser;
       }
 
@@ -599,8 +623,11 @@
           const cred = await createUserWithEmailAndPassword(auth, email, password);
           const profile = { uid: cred.user.uid, name, email, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' };
           await setDoc(doc(db, 'users', cred.user.uid), profile);
+          if (!state.users.some(u => u.email === email)) {
+            state.users.push({ id: cred.user.uid, ...profile, password: '' });
+          }
           state.currentUser = profile;
-          saveData();
+          await saveData();
           return state.currentUser;
         }
 
@@ -610,7 +637,7 @@
         const user = { id: createId('user'), name, email, password, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' };
         state.users.push(user);
         state.currentUser = { ...user };
-        saveData();
+        await saveData();
         return state.currentUser;
       }
 
@@ -623,7 +650,7 @@
         if (state.currentUser?.id === userId) {
           state.currentUser = { ...user };
         }
-        saveData();
+        void saveData();
       }
 
       document.getElementById('loginFormEl').addEventListener('submit', async (e) => {
@@ -660,18 +687,18 @@
         }
       });
 
-      document.getElementById('hoursForm').addEventListener('submit', (e) => {
+      document.getElementById('hoursForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         if (!state.currentUser) return;
         const hours = Number(document.getElementById('hoursValue').value);
         const description = document.getElementById('hoursDescription').value;
         state.hoursRequests.unshift({ id: createId('req'), userEmail: state.currentUser.email, hours, description, status: 'pending', createdAt: new Date().toISOString() });
-        saveData();
+        await saveData();
         render();
         alert('Žádost odeslána ke schválení.');
       });
 
-      document.getElementById('inventoryForm').addEventListener('submit', (e) => {
+      document.getElementById('inventoryForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const item = {
           id: createId('inv'),
@@ -682,12 +709,12 @@
           unit: document.getElementById('inventoryUnit').value
         };
         state.inventory.push(item);
-        saveData();
+        await saveData();
         render();
         e.target.reset();
       });
 
-      document.getElementById('projectForm').addEventListener('submit', (e) => {
+      document.getElementById('projectForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const rawItems = document.getElementById('projectItems').value;
         const items = rawItems.split('|').filter(Boolean).map(part => {
@@ -695,7 +722,7 @@
           return { name: name.trim(), quantity: Number(quantity), unit: unit?.trim() || 'ks' };
         });
         state.projects.unshift({ id: createId('proj'), name: document.getElementById('projectName').value, type: document.getElementById('projectType').value, items, done: false });
-        saveData();
+        await saveData();
         render();
         e.target.reset();
       });
@@ -705,7 +732,7 @@
           await signOut(auth);
         }
         state.currentUser = null;
-        saveData();
+        await saveData();
         document.getElementById('authView').classList.remove('hidden');
         document.getElementById('appView').classList.add('hidden');
         render();
@@ -722,24 +749,24 @@
         renderProfileModal();
       };
 
-      window.editInventory = (id) => {
+      window.editInventory = async (id) => {
         const item = state.inventory.find(i => i.id === id);
         if (!item) return;
         const quantity = Number(prompt('Nové množství', item.quantity));
         if (!Number.isNaN(quantity)) {
           item.quantity = quantity;
-          saveData();
+          await saveData();
           render();
         }
       };
 
-      window.deleteInventory = (id) => {
+      window.deleteInventory = async (id) => {
         state.inventory = state.inventory.filter(i => i.id !== id);
-        saveData();
+        await saveData();
         render();
       };
 
-      window.approveRequest = (id) => {
+      window.approveRequest = async (id) => {
         const req = state.hoursRequests.find(r => r.id === id);
         if (!req || req.status !== 'pending') return;
         const user = state.users.find(u => u.email === req.userEmail);
@@ -756,21 +783,21 @@
             state.currentUser = { ...user };
           }
         }
-        saveData();
+        await saveData();
         render();
       };
 
-      window.rejectRequest = (id) => {
+      window.rejectRequest = async (id) => {
         const req = state.hoursRequests.find(r => r.id === id);
         if (!req || req.status !== 'pending') return;
         req.status = 'rejected';
         req.rejectedAt = new Date().toISOString();
         delete req.approvedAt;
-        saveData();
+        await saveData();
         render();
       };
 
-      window.toggleProjectDone = (id, checked) => {
+      window.toggleProjectDone = async (id, checked) => {
         const project = state.projects.find(p => p.id === id);
         if (!project) return;
         if (checked) {
@@ -782,7 +809,7 @@
           }
         }
         project.done = checked;
-        saveData();
+        await saveData();
         render();
       };
 
@@ -790,11 +817,11 @@
         const file = event.target.files[0];
         if (!file || !state.currentUser) return;
         const reader = new FileReader();
-        reader.onload = () => {
+        reader.onload = async () => {
           state.currentUser.avatar = reader.result;
           const user = state.users.find(u => u.id === state.currentUser.id);
           if (user) user.avatar = reader.result;
-          saveData();
+          await saveData();
           render();
         };
         reader.readAsDataURL(file);
@@ -816,14 +843,21 @@
               render();
             }
           });
+
+          onSnapshot(doc(db, 'app', 'sharedState'), (snap) => {
+            if (snap.exists()) {
+              applyLoadedData(snap.data());
+              render();
+            }
+          });
         } catch (error) {
           console.warn('Firebase se nepodařilo inicializovat, použije se demo režim.', error);
           firebaseReady = false;
         }
       }
 
-      window.addEventListener('DOMContentLoaded', () => {
-        loadData();
+      window.addEventListener('DOMContentLoaded', async () => {
+        await loadData();
         showSection('dashboard');
         if (state.currentUser) {
           document.getElementById('authView').classList.add('hidden');
