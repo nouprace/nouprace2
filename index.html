@@ -213,6 +213,31 @@
         return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
       }
 
+      function getUserRole(user = {}) {
+        const email = (user?.email || '').toLowerCase();
+        if (user?.role === 'admin' || email === 'nou@nou.cz') {
+          return 'admin';
+        }
+        return 'worker';
+      }
+
+      function normalizeUser(user = {}) {
+        const normalized = { ...user };
+        normalized.role = getUserRole(normalized);
+        if (!normalized.id && normalized.uid) {
+          normalized.id = normalized.uid;
+        }
+        if (normalized.level === undefined) normalized.level = 1;
+        if (normalized.xp === undefined) normalized.xp = 0;
+        if (normalized.hours === undefined) normalized.hours = 0;
+        if (normalized.avatar === undefined) normalized.avatar = '';
+        return normalized;
+      }
+
+      function normalizeUsers(users = []) {
+        return (users || []).map((user) => normalizeUser(user));
+      }
+
       function isFirebaseConfigured() {
         return Boolean(firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId);
       }
@@ -238,7 +263,7 @@
       }
 
       function applyLoadedData(data) {
-        state.users = data.users || [];
+        state.users = normalizeUsers(data.users || []);
         state.inventory = data.inventory || [];
         state.projects = data.projects || [];
         state.hoursRequests = data.hoursRequests || [];
@@ -247,7 +272,7 @@
         if (authUserId) {
           const persistedUser = state.users.find(user => user.id === authUserId || user.uid === authUserId || user.email === authUserId);
           if (persistedUser) {
-            state.currentUser = { ...persistedUser };
+            state.currentUser = normalizeUser({ ...persistedUser });
           }
         }
       }
@@ -596,45 +621,73 @@
         modal.classList.remove('hidden');
       }
 
-      async function getUserProfile(uid) {
+      async function getUserProfile(uid, email = '') {
         if (!firebaseReady || !db) return null;
         const snap = await getDoc(doc(db, 'users', uid));
-        return snap.exists() ? snap.data() : null;
+        if (!snap.exists()) return null;
+        return normalizeUser({ uid, email, ...snap.data() });
       }
 
       async function loginUser(email, password) {
         if (firebaseReady && auth) {
           const cred = await signInWithEmailAndPassword(auth, email, password);
-          const profile = await getUserProfile(cred.user.uid);
-          state.currentUser = { uid: cred.user.uid, email: cred.user.email, ...(profile || { name: cred.user.email, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' }) };
+          const profile = await getUserProfile(cred.user.uid, cred.user.email);
+          const normalizedProfile = normalizeUser({
+            uid: cred.user.uid,
+            id: cred.user.uid,
+            email: cred.user.email,
+            ...(profile || {}),
+            name: profile?.name || cred.user.email,
+            role: getUserRole({ email: cred.user.email, role: profile?.role }),
+            xp: profile?.xp ?? 0,
+            level: profile?.level ?? 1,
+            hours: profile?.hours ?? 0,
+            avatar: profile?.avatar || ''
+          });
+
+          const existingIndex = state.users.findIndex(user => (user.email || '').toLowerCase() === email.toLowerCase());
+          if (existingIndex >= 0) {
+            state.users[existingIndex] = normalizedProfile;
+          } else {
+            state.users.push(normalizedProfile);
+          }
+
+          state.currentUser = normalizedProfile;
           await saveData();
           return state.currentUser;
         }
 
-        const user = state.users.find(u => u.email === email && u.password === password);
+        const user = state.users.find(u => u.email?.toLowerCase() === email.toLowerCase() && u.password === password);
         if (!user) return null;
-        state.currentUser = { ...user };
+        state.currentUser = normalizeUser({ ...user });
         await saveData();
         return state.currentUser;
       }
 
       async function registerUser(name, email, password) {
+        const role = getUserRole({ email });
+
         if (firebaseReady && auth) {
           const cred = await createUserWithEmailAndPassword(auth, email, password);
-          const profile = { uid: cred.user.uid, name, email, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' };
+          const profile = normalizeUser({ uid: cred.user.uid, id: cred.user.uid, name, email, role, xp: 0, level: 1, hours: 0, avatar: '' });
           await setDoc(doc(db, 'users', cred.user.uid), profile);
-          if (!state.users.some(u => u.email === email)) {
-            state.users.push({ id: cred.user.uid, ...profile, password: '' });
+
+          const existingIndex = state.users.findIndex(user => (user.email || '').toLowerCase() === email.toLowerCase());
+          if (existingIndex >= 0) {
+            state.users[existingIndex] = profile;
+          } else {
+            state.users.push(profile);
           }
+
           state.currentUser = profile;
           await saveData();
           return state.currentUser;
         }
 
-        if (state.users.some(u => u.email === email)) {
+        if (state.users.some(u => u.email?.toLowerCase() === email.toLowerCase())) {
           throw new Error('Uživatel s tímto e-mailem již existuje.');
         }
-        const user = { id: createId('user'), name, email, password, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' };
+        const user = normalizeUser({ id: createId('user'), name, email, password, role, xp: 0, level: 1, hours: 0, avatar: '' });
         state.users.push(user);
         state.currentUser = { ...user };
         await saveData();
@@ -648,7 +701,7 @@
         user.xp = (user.xp || 0) + xp;
         user.level = Math.floor(user.xp / 100) + 1;
         if (state.currentUser?.id === userId) {
-          state.currentUser = { ...user };
+          state.currentUser = normalizeUser({ ...user });
         }
         void saveData();
       }
@@ -769,7 +822,7 @@
       window.approveRequest = async (id) => {
         const req = state.hoursRequests.find(r => r.id === id);
         if (!req || req.status !== 'pending') return;
-        const user = state.users.find(u => u.email === req.userEmail);
+        const user = state.users.find(u => (u.email || '').toLowerCase() === (req.userEmail || '').toLowerCase());
         if (user) {
           const newHours = (user.hours || 0) + Number(req.hours || 0);
           const newXp = (user.xp || 0) + Number(req.hours || 0) * 10;
@@ -780,7 +833,7 @@
           req.approvedAt = new Date().toISOString();
           delete req.rejectedAt;
           if (state.currentUser?.id === user.id) {
-            state.currentUser = { ...user };
+            state.currentUser = normalizeUser({ ...user });
           }
         }
         await saveData();
@@ -835,8 +888,20 @@
           firebaseReady = true;
           onAuthStateChanged(auth, async (user) => {
             if (user) {
-              const profile = await getUserProfile(user.uid);
-              state.currentUser = { uid: user.uid, email: user.email, ...(profile || { name: user.email, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' }) };
+              const profile = await getUserProfile(user.uid, user.email);
+              const normalizedProfile = normalizeUser({
+                uid: user.uid,
+                id: user.uid,
+                email: user.email,
+                ...(profile || {}),
+                name: profile?.name || user.email,
+                role: getUserRole({ email: user.email, role: profile?.role }),
+                xp: profile?.xp ?? 0,
+                level: profile?.level ?? 1,
+                hours: profile?.hours ?? 0,
+                avatar: profile?.avatar || ''
+              });
+              state.currentUser = normalizedProfile;
               render();
             } else {
               state.currentUser = null;
