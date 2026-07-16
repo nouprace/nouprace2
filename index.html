@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GateCraft Hub</title>
+    <style>
+      :root {
+        --bg: #07111d;
+        --panel: #0f1723;
+        --panel-2: #141d2a;
+        --text: #f5f7fa;
+        --muted: #91a2b8;
+        --accent: #22c55e;
+        --accent-2: #38bdf8;
+        --danger: #ef4444;
+        --warning: #f59e0b;
+        --border: rgba(255,255,255,0.08);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; font-family: Inter, Segoe UI, Arial, sans-serif; background: linear-gradient(135deg, var(--bg), #0c1420); color: var(--text);
+      }
+      .app-shell { display: flex; min-height: 100vh; }
+      .sidebar { width: 280px; background: rgba(7, 17, 29, 0.96); border-right: 1px solid var(--border); padding: 24px 18px; }
+      .sidebar h1 { font-size: 1.2rem; margin: 0 0 24px; }
+      .sidebar .nav-btn { display: block; width: 100%; text-align: left; padding: 12px 14px; margin: 8px 0; border: none; border-radius: 12px; background: transparent; color: var(--text); cursor: pointer; }
+      .sidebar .nav-btn.active, .sidebar .nav-btn:hover { background: var(--panel); }
+      .content { flex: 1; padding: 24px; }
+      .card { background: var(--panel); border: 1px solid var(--border); border-radius: 18px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+      .row { display: flex; gap: 16px; flex-wrap: wrap; }
+      .col { flex: 1; min-width: 240px; }
+      .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+      .btn { padding: 10px 14px; border: none; border-radius: 10px; cursor: pointer; font-weight: 600; }
+      .btn-primary { background: linear-gradient(135deg, var(--accent-2), #2563eb); color: white; }
+      .btn-success { background: var(--accent); color: black; }
+      .btn-danger { background: var(--danger); color: white; }
+      .hidden { display: none !important; }
+      form input, form textarea, form select { width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); margin-top: 6px; }
+      .auth-card { max-width: 420px; margin: 60px auto; } 
+      .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 0.8rem; background: rgba(255,255,255,0.08); color: var(--muted); }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+      th, td { padding: 10px; border-bottom: 1px solid var(--border); text-align: left; }
+      .status-ok { color: var(--accent); }
+      .status-warn { color: var(--warning); }
+      .status-bad { color: var(--danger); }
+      .employee-card { display: flex; align-items: center; justify-content: space-between; padding: 14px; border: 1px solid var(--border); border-radius: 14px; background: rgba(255,255,255,0.03); }
+      .profile-photo { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: #26384d; }
+      .small { font-size: 0.9rem; color: var(--muted); }
+      .section-title { display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px; }
+      .status-pill { display:inline-block; padding: 5px 8px; border-radius: 999px; font-size:0.75rem; margin-top: 6px; }
+      .status-green { background: rgba(34,197,94,0.15); color: var(--accent); }
+      .status-red { background: rgba(239,68,68,0.15); color: var(--danger); }
+    </style>
+  </head>
+  <body>
+    <div id="authView" class="auth-card card">
+      <h2>GateCraft Hub</h2>
+      <p class="small">Správa výroby vrat, bran a plotů</p>
+      <div class="row">
+        <button class="btn btn-primary" onclick="showAuth('login')">Přihlásit</button>
+        <button class="btn" onclick="showAuth('register')">Registrovat</button>
+      </div>
+      <div id="loginForm" class="card" style="margin-top:16px;">
+        <h3>Přihlášení</h3>
+        <form id="loginFormEl">
+          <label>E-mail<input type="email" id="loginEmail" required /></label>
+          <label>Heslo<input type="password" id="loginPassword" required /></label>
+          <button class="btn btn-primary" style="margin-top:12px;" type="submit">Přihlásit se</button>
+        </form>
+      </div>
+      <div id="registerForm" class="card hidden" style="margin-top:16px;">
+        <h3>Registrace</h3>
+        <form id="registerFormEl">
+          <label>Jméno<input type="text" id="registerName" required /></label>
+          <label>E-mail<input type="email" id="registerEmail" required /></label>
+          <label>Heslo<input type="password" id="registerPassword" required /></label>
+          <button class="btn btn-success" style="margin-top:12px;" type="submit">Vytvořit účet</button>
+        </form>
+      </div>
+    </div>
+
+    <div id="appView" class="app-shell hidden">
+      <aside class="sidebar">
+        <h1>GateCraft Hub</h1>
+        <button class="nav-btn active" onclick="showSection('dashboard')">Dashboard</button>
+        <button class="nav-btn" onclick="showSection('employees')">Pracovníci</button>
+        <button class="nav-btn" onclick="showSection('hours')">Zápis hodin</button>
+        <button class="nav-btn" onclick="showSection('inventory')">Sklad</button>
+        <button class="nav-btn" onclick="showSection('projects')">Projekty</button>
+        <button class="nav-btn" onclick="showSection('profile')">Profil</button>
+        <button class="btn btn-danger" style="margin-top:18px;" onclick="logout()">Odhlásit</button>
+      </aside>
+      <main class="content">
+        <section id="dashboardSection">
+          <div class="section-title"><h2>Dashboard</h2><span class="pill" id="currentUserBadge">Přihlášen</span></div>
+          <div class="grid" id="employeeCards"></div>
+        </section>
+
+        <section id="employeesSection" class="hidden">
+          <div class="section-title"><h2>Seznam pracovníků</h2></div>
+          <div id="employeeList" class="grid"></div>
+        </section>
+
+        <section id="hoursSection" class="hidden">
+          <div class="section-title"><h2>Zápis hodin</h2></div>
+          <div class="card">
+            <form id="hoursForm">
+              <label>Počet hodin<input type="number" id="hoursValue" min="1" required /></label>
+              <label>Popis práce<textarea id="hoursDescription" required></textarea></label>
+              <button class="btn btn-primary" type="submit">Odeslat ke schválení</button>
+            </form>
+          </div>
+          <div class="card" style="margin-top:16px;">
+            <h3>Čekající žádosti</h3>
+            <div id="pendingHoursList"></div>
+          </div>
+        </section>
+
+        <section id="inventorySection" class="hidden">
+          <div class="section-title"><h2>Sklad materiálů</h2></div>
+          <form id="inventoryForm" class="card" style="margin-bottom:16px;">
+            <div class="row">
+              <div class="col"><label>Název<input id="inventoryName" required /></label></div>
+              <div class="col"><label>Kategorie<input id="inventoryCategory" required /></label></div>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <div class="col"><label>Rozměr<input id="inventorySize" /></label></div>
+              <div class="col"><label>Množství<input id="inventoryQuantity" type="number" min="0" required /></label></div>
+              <div class="col"><label>Jednotka<input id="inventoryUnit" required /></label></div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:12px;" type="submit">Přidat položku</button>
+          </form>
+          <div class="card">
+            <table>
+              <thead><tr><th>Název</th><th>Kategorie</th><th>Rozměr</th><th>Množství</th><th>Akce</th></tr></thead>
+              <tbody id="inventoryTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="projectsSection" class="hidden">
+          <div class="section-title"><h2>Projekty</h2></div>
+          <form id="projectForm" class="card" style="margin-bottom:16px;">
+            <div class="row">
+              <div class="col"><label>Název projektu<input id="projectName" required /></label></div>
+              <div class="col"><label>Typ<select id="projectType"><option>Vrata</option><option>Brána</option><option>Plot</option></select></label></div>
+            </div>
+            <label>Materiály (příklad: Modřín:12:m|Jekl 40x40x2:3:ks)<input id="projectItems" placeholder="Modřín:12:m|Pásovina:4:ks" /></label>
+            <button class="btn btn-primary" style="margin-top:12px;" type="submit">Vytvořit projekt</button>
+          </form>
+          <div id="projectsList" class="grid"></div>
+        </section>
+
+        <section id="profileSection" class="hidden">
+          <div class="section-title"><h2>Můj profil</h2></div>
+          <div class="card" id="profileInfo"></div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module">
+      import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
+      import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+      import { getFirestore, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
+
+      const STORAGE_KEY = 'gatecraft-hub-state-v1';
+      const firebaseConfig = {
+        apiKey: 'YOUR_API_KEY',
+        authDomain: 'YOUR_PROJECT.firebaseapp.com',
+        projectId: 'YOUR_PROJECT',
+        storageBucket: 'YOUR_PROJECT.appspot.com',
+        messagingSenderId: '1234567890',
+        appId: '1:1234567890:web:abc123'
+      };
+
+      const state = {
+        currentUser: null,
+        currentSection: 'dashboard',
+        users: [],
+        inventory: [],
+        projects: [],
+        hoursRequests: []
+      };
+
+      let auth = null;
+      let db = null;
+      let firebaseReady = false;
+
+      function createId(prefix) {
+        return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+      }
+
+      function isFirebaseConfigured() {
+        return Boolean(firebaseConfig.apiKey && firebaseConfig.apiKey !== 'AIzaSyCx3d-_EKf7HeYNgMrNc3HP3FZtqnVPogI' && firebaseConfig.projectId && firebaseConfig.projectId !== 'nouprace-d0ba3');
+      }
+
+      function getDefaultData() {
+        return {
+          users: [
+            { id: 'admin-1', name: 'Admin', email: 'admin@gatecraft.cz', password: 'admin1234', role: 'admin', xp: 120, level: 2, hours: 12, avatar: '' },
+            { id: 'worker-1', name: 'Petr Novák', email: 'petr@gatecraft.cz', password: 'worker1234', role: 'worker', xp: 50, level: 1, hours: 5, avatar: '' }
+          ],
+          inventory: [
+            { id: 'inv-1', name: 'Modřín', category: 'Dřevo', size: 'standard', quantity: 120, unit: 'm' },
+            { id: 'inv-2', name: 'Obyčejný', category: 'Dřevo', size: 'standard', quantity: 80, unit: 'm' },
+            { id: 'inv-3', name: 'Pásovina', category: 'Železo', size: '20x3', quantity: 40, unit: 'ks' },
+            { id: 'inv-4', name: 'Jekl 40x40x2', category: 'Železo', size: '40x40x2', quantity: 15, unit: 'ks' }
+          ],
+          projects: [
+            { id: 'proj-1', name: 'Projekt A', type: 'Vrata', items: [{ name: 'Modřín', quantity: 12, unit: 'm' }, { name: 'Pásovina', quantity: 4, unit: 'ks' }], done: false }
+          ],
+          hoursRequests: [
+            { id: 'req-1', userEmail: 'petr@gatecraft.cz', hours: 6, description: 'Montáž brány', status: 'pending', createdAt: new Date().toISOString() }
+          ]
+        };
+      }
+
+      function loadData() {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          const data = getDefaultData();
+          state.users = data.users;
+          state.inventory = data.inventory;
+          state.projects = data.projects;
+          state.hoursRequests = data.hoursRequests;
+          saveData();
+          return;
+        }
+        try {
+          const data = JSON.parse(raw);
+          state.users = data.users || [];
+          state.inventory = data.inventory || [];
+          state.projects = data.projects || [];
+          state.hoursRequests = data.hoursRequests || [];
+        } catch (error) {
+          console.warn('Nepodařilo se načíst data', error);
+          const data = getDefaultData();
+          state.users = data.users;
+          state.inventory = data.inventory;
+          state.projects = data.projects;
+          state.hoursRequests = data.hoursRequests;
+        }
+      }
+
+      function saveData() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ users: state.users, inventory: state.inventory, projects: state.projects, hoursRequests: state.hoursRequests }));
+      }
+
+      function showSection(section) {
+        state.currentSection = section;
+        document.querySelectorAll('main section').forEach(sec => sec.classList.add('hidden'));
+        document.getElementById(section + 'Section').classList.remove('hidden');
+        document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.nav-btn')[['dashboard','employees','hours','inventory','projects','profile'].indexOf(section)].classList.add('active');
+      }
+
+      function showAuth(type) {
+        document.getElementById('loginForm').classList.toggle('hidden', type !== 'login');
+        document.getElementById('registerForm').classList.toggle('hidden', type !== 'register');
+      }
+
+      function getEarnings(user) {
+        const now = new Date();
+        const approved = state.hoursRequests.filter(req => req.status === 'approved' && req.userEmail === user.email);
+        const dayHours = approved.filter(req => req.approvedAt && new Date(req.approvedAt).toDateString() === now.toDateString()).reduce((sum, req) => sum + Number(req.hours || 0), 0);
+        const monthHours = approved.filter(req => req.approvedAt && new Date(req.approvedAt).getMonth() === now.getMonth() && new Date(req.approvedAt).getFullYear() === now.getFullYear()).reduce((sum, req) => sum + Number(req.hours || 0), 0);
+        const yearHours = approved.filter(req => req.approvedAt && new Date(req.approvedAt).getFullYear() === now.getFullYear()).reduce((sum, req) => sum + Number(req.hours || 0), 0);
+        return { day: dayHours * 150, month: monthHours * 150, year: yearHours * 150 };
+      }
+
+      function render() {
+        document.getElementById('currentUserBadge').textContent = state.currentUser ? `${state.currentUser.name} · ${state.currentUser.role}` : 'Přihlášen';
+        renderDashboard();
+        renderEmployees();
+        renderHours();
+        renderInventory();
+        renderProjects();
+        renderProfile();
+      }
+
+      function renderDashboard() {
+        const container = document.getElementById('employeeCards');
+        container.innerHTML = state.users.map(user => `
+          <div class="card">
+            <div class="employee-card">
+              <div>
+                <strong>${user.name}</strong><br><span class="small">${user.role === 'admin' ? 'Admin' : 'Pracovník'}</span>
+              </div>
+              <img class="profile-photo" src="${user.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.name)}" alt="avatar" />
+            </div>
+            <div style="margin-top:10px;">
+              <div>Level: ${user.level || 1}</div>
+              <div>XP: ${user.xp || 0}</div>
+              <div>Hodiny: ${user.hours || 0}</div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      function renderEmployees() {
+        const list = document.getElementById('employeeList');
+        list.innerHTML = state.users.map(user => `
+          <div class="card">
+            <div class="employee-card">
+              <div><strong>${user.name}</strong><br><span class="small">${user.email}</span></div>
+              <img class="profile-photo" src="${user.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.name)}" alt="avatar" />
+            </div>
+            <div style="margin-top:10px;">
+              <div>Level: ${user.level || 1}</div>
+              <div>XP: ${user.xp || 0}</div>
+              <div>Výdělek měsíčně: ${(((user.hours || 0) * 150)).toLocaleString('cs-CZ')} Kč</div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      function renderHours() {
+        const pending = document.getElementById('pendingHoursList');
+        const isAdmin = state.currentUser?.role === 'admin';
+        if (isAdmin) {
+          pending.innerHTML = state.hoursRequests.filter(r => r.status === 'pending').map(req => `
+            <div class="card" style="margin-top:10px;">
+              <strong>${req.userEmail}</strong><br>
+              <span class="small">${req.hours} h · ${req.description}</span>
+              <div style="margin-top:10px;">
+                <button class="btn btn-success" onclick="approveRequest('${req.id}')">Schválit</button>
+              </div>
+            </div>
+          `).join('');
+        } else {
+          const own = state.hoursRequests.filter(r => r.userEmail === state.currentUser?.email);
+          pending.innerHTML = own.map(req => `
+            <div class="card" style="margin-top:10px;">
+              <strong>${req.description}</strong><br>
+              <span class="small">${req.hours} h · ${req.status === 'approved' ? 'Schváleno' : 'Čeká na schválení'}</span>
+            </div>
+          `).join('');
+        }
+      }
+
+      function renderInventory() {
+        const tbody = document.getElementById('inventoryTableBody');
+        tbody.innerHTML = state.inventory.map(item => `
+          <tr>
+            <td>${item.name}</td>
+            <td>${item.category}</td>
+            <td>${item.size || '-'}</td>
+            <td>${item.quantity} ${item.unit}</td>
+            <td>
+              <button class="btn" onclick="editInventory('${item.id}')">Upravit</button>
+              <button class="btn btn-danger" onclick="deleteInventory('${item.id}')">Smazat</button>
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      function renderProjects() {
+        const list = document.getElementById('projectsList');
+        list.innerHTML = state.projects.map(project => `
+          <div class="card">
+            <h3>${project.name}</h3>
+            <p class="small">${project.type}</p>
+            <ul>
+              ${project.items.map(item => {
+                const stock = state.inventory.find(inv => inv.name.toLowerCase() === item.name.toLowerCase());
+                const ok = stock && stock.quantity >= item.quantity;
+                return `<li><span class="status-pill ${ok ? 'status-green' : 'status-red'}">${ok ? 'Dostatek' : 'Nedostatek'}</span> ${item.name} · ${item.quantity} ${item.unit}</li>`;
+              }).join('')}
+            </ul>
+            <label><input type="checkbox" ${project.done ? 'checked' : ''} onchange="toggleProjectDone('${project.id}', this.checked)" /> Dokončeno</label>
+          </div>
+        `).join('');
+      }
+
+      function renderProfile() {
+        const container = document.getElementById('profileInfo');
+        if (!state.currentUser) return;
+        const earnings = getEarnings(state.currentUser);
+        container.innerHTML = `
+          <div class="row">
+            <img class="profile-photo" src="${state.currentUser.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(state.currentUser.name)}" alt="avatar" />
+            <div>
+              <h3>${state.currentUser.name}</h3>
+              <p class="small">${state.currentUser.email}</p>
+              <p>Hodiny: ${state.currentUser.hours || 0}</p>
+              <p>Level: ${state.currentUser.level || 1}</p>
+              <p>XP: ${state.currentUser.xp || 0}</p>
+              <p>Dnešní výdělek: ${earnings.day.toLocaleString('cs-CZ')} Kč</p>
+              <p>Měsíční výdělek: ${earnings.month.toLocaleString('cs-CZ')} Kč</p>
+              <p>Roční výdělek: ${earnings.year.toLocaleString('cs-CZ')} Kč</p>
+              <label style="display:block;margin-top:10px;">Profilová fotka<input type="file" accept="image/*" onchange="uploadAvatar(event)" /></label>
+            </div>
+          </div>
+        `;
+      }
+
+      async function getUserProfile(uid) {
+        if (!firebaseReady || !db) return null;
+        const snap = await getDoc(doc(db, 'users', uid));
+        return snap.exists() ? snap.data() : null;
+      }
+
+      async function loginUser(email, password) {
+        if (firebaseReady && auth) {
+          const cred = await signInWithEmailAndPassword(auth, email, password);
+          const profile = await getUserProfile(cred.user.uid);
+          state.currentUser = { uid: cred.user.uid, email: cred.user.email, ...(profile || { name: cred.user.email, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' }) };
+          saveData();
+          return state.currentUser;
+        }
+
+        const user = state.users.find(u => u.email === email && u.password === password);
+        if (!user) return null;
+        state.currentUser = { ...user };
+        saveData();
+        return state.currentUser;
+      }
+
+      async function registerUser(name, email, password) {
+        if (firebaseReady && auth) {
+          const cred = await createUserWithEmailAndPassword(auth, email, password);
+          const profile = { uid: cred.user.uid, name, email, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' };
+          await setDoc(doc(db, 'users', cred.user.uid), profile);
+          state.currentUser = profile;
+          saveData();
+          return state.currentUser;
+        }
+
+        if (state.users.some(u => u.email === email)) {
+          throw new Error('Uživatel s tímto e-mailem již existuje.');
+        }
+        const user = { id: createId('user'), name, email, password, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' };
+        state.users.push(user);
+        state.currentUser = { ...user };
+        saveData();
+        return state.currentUser;
+      }
+
+      function updateUserStats(userId, hours, xp) {
+        const user = state.users.find(u => u.id === userId);
+        if (!user) return;
+        user.hours = (user.hours || 0) + hours;
+        user.xp = (user.xp || 0) + xp;
+        user.level = Math.floor(user.xp / 100) + 1;
+        if (state.currentUser?.id === userId) {
+          state.currentUser = { ...user };
+        }
+        saveData();
+      }
+
+      document.getElementById('loginFormEl').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        try {
+          const user = await loginUser(email, password);
+          if (!user) {
+            alert('Neplatné přihlašovací údaje.');
+            return;
+          }
+          document.getElementById('authView').classList.add('hidden');
+          document.getElementById('appView').classList.remove('hidden');
+          render();
+        } catch (error) {
+          alert(error.message);
+        }
+      });
+
+      document.getElementById('registerFormEl').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = document.getElementById('registerName').value;
+        const email = document.getElementById('registerEmail').value;
+        const password = document.getElementById('registerPassword').value;
+        try {
+          const user = await registerUser(name, email, password);
+          document.getElementById('authView').classList.add('hidden');
+          document.getElementById('appView').classList.remove('hidden');
+          render();
+          alert(`Účet vytvořen pro ${user.name}`);
+        } catch (error) {
+          alert(error.message);
+        }
+      });
+
+      document.getElementById('hoursForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!state.currentUser) return;
+        const hours = Number(document.getElementById('hoursValue').value);
+        const description = document.getElementById('hoursDescription').value;
+        state.hoursRequests.unshift({ id: createId('req'), userEmail: state.currentUser.email, hours, description, status: 'pending', createdAt: new Date().toISOString() });
+        saveData();
+        render();
+        alert('Žádost odeslána ke schválení.');
+      });
+
+      document.getElementById('inventoryForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const item = {
+          id: createId('inv'),
+          name: document.getElementById('inventoryName').value,
+          category: document.getElementById('inventoryCategory').value,
+          size: document.getElementById('inventorySize').value,
+          quantity: Number(document.getElementById('inventoryQuantity').value),
+          unit: document.getElementById('inventoryUnit').value
+        };
+        state.inventory.push(item);
+        saveData();
+        render();
+        e.target.reset();
+      });
+
+      document.getElementById('projectForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const rawItems = document.getElementById('projectItems').value;
+        const items = rawItems.split('|').filter(Boolean).map(part => {
+          const [name, quantity, unit] = part.split(':');
+          return { name: name.trim(), quantity: Number(quantity), unit: unit?.trim() || 'ks' };
+        });
+        state.projects.unshift({ id: createId('proj'), name: document.getElementById('projectName').value, type: document.getElementById('projectType').value, items, done: false });
+        saveData();
+        render();
+        e.target.reset();
+      });
+
+      window.logout = async () => {
+        if (firebaseReady && auth) {
+          await signOut(auth);
+        }
+        state.currentUser = null;
+        document.getElementById('authView').classList.remove('hidden');
+        document.getElementById('appView').classList.add('hidden');
+        render();
+      };
+
+      window.showSection = showSection;
+      window.showAuth = showAuth;
+
+      window.editInventory = (id) => {
+        const item = state.inventory.find(i => i.id === id);
+        if (!item) return;
+        const quantity = Number(prompt('Nové množství', item.quantity));
+        if (!Number.isNaN(quantity)) {
+          item.quantity = quantity;
+          saveData();
+          render();
+        }
+      };
+
+      window.deleteInventory = (id) => {
+        state.inventory = state.inventory.filter(i => i.id !== id);
+        saveData();
+        render();
+      };
+
+      window.approveRequest = (id) => {
+        const req = state.hoursRequests.find(r => r.id === id);
+        if (!req) return;
+        const user = state.users.find(u => u.email === req.userEmail);
+        if (user) {
+          const newHours = (user.hours || 0) + Number(req.hours || 0);
+          const newXp = (user.xp || 0) + Number(req.hours || 0) * 10;
+          user.hours = newHours;
+          user.xp = newXp;
+          user.level = Math.floor(newXp / 100) + 1;
+          req.status = 'approved';
+          req.approvedAt = new Date().toISOString();
+          if (state.currentUser?.id === user.id) {
+            state.currentUser = { ...user };
+          }
+        }
+        saveData();
+        render();
+      };
+
+      window.toggleProjectDone = (id, checked) => {
+        const project = state.projects.find(p => p.id === id);
+        if (!project) return;
+        if (checked) {
+          for (const item of project.items) {
+            const stock = state.inventory.find(i => i.name.toLowerCase() === item.name.toLowerCase());
+            if (stock) {
+              stock.quantity = Math.max(0, stock.quantity - item.quantity);
+            }
+          }
+        }
+        project.done = checked;
+        saveData();
+        render();
+      };
+
+      window.uploadAvatar = (event) => {
+        const file = event.target.files[0];
+        if (!file || !state.currentUser) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          state.currentUser.avatar = reader.result;
+          const user = state.users.find(u => u.id === state.currentUser.id);
+          if (user) user.avatar = reader.result;
+          saveData();
+          render();
+        };
+        reader.readAsDataURL(file);
+      };
+
+      if (isFirebaseConfigured()) {
+        try {
+          const app = initializeApp(firebaseConfig);
+          auth = getAuth(app);
+          db = getFirestore(app);
+          firebaseReady = true;
+          onAuthStateChanged(auth, async (user) => {
+            if (user) {
+              const profile = await getUserProfile(user.uid);
+              state.currentUser = { uid: user.uid, email: user.email, ...(profile || { name: user.email, role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' }) };
+              render();
+            } else {
+              state.currentUser = null;
+              render();
+            }
+          });
+        } catch (error) {
+          console.warn('Firebase se nepodařilo inicializovat, použije se demo režim.', error);
+          firebaseReady = false;
+        }
+      }
+
+      window.addEventListener('DOMContentLoaded', () => {
+        loadData();
+        showSection('dashboard');
+        showAuth('login');
+        render();
+      });
+    </script>
+  </body>
+</html>
