@@ -51,6 +51,18 @@
       .status-pill { display:inline-block; padding: 5px 8px; border-radius: 999px; font-size:0.75rem; margin-top: 6px; }
       .status-green { background: rgba(34,197,94,0.15); color: var(--accent); }
       .status-red { background: rgba(239,68,68,0.15); color: var(--danger); }
+      .clickable-card { cursor: pointer; transition: transform 0.2s ease, border-color 0.2s ease; }
+      .clickable-card:hover { transform: translateY(-2px); border-color: var(--accent-2); }
+      .modal-backdrop { position: fixed; inset: 0; background: rgba(2, 6, 23, 0.78); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 1000; }
+      .modal-card { width: min(920px, 100%); max-height: 85vh; overflow: auto; }
+      .chart-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 12px; }
+      .chart-card { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
+      .chart-bars { display: flex; align-items: flex-end; gap: 8px; height: 120px; margin-top: 8px; }
+      .chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+      .chart-bar { width: 100%; max-width: 28px; border-radius: 8px 8px 0 0; background: linear-gradient(180deg, var(--accent-2), var(--accent)); min-height: 4px; }
+      .chart-label { font-size: 0.78rem; color: var(--muted); text-align: center; }
+      .stat-list { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-top: 10px; }
+      .stat-pill { background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 12px; padding: 10px; }
     </style>
   </head>
   <body>
@@ -95,6 +107,15 @@
         <section id="dashboardSection">
           <div class="section-title"><h2>Dashboard</h2><span class="pill" id="currentUserBadge">Přihlášen</span></div>
           <div class="grid" id="employeeCards"></div>
+          <div id="profileModal" class="modal-backdrop hidden">
+            <div class="modal-card card">
+              <div class="section-title">
+                <h3 id="profileModalTitle">Profil</h3>
+                <button class="btn" onclick="closeProfileModal()">Zavřít</button>
+              </div>
+              <div id="profileModalContent"></div>
+            </div>
+          </div>
         </section>
 
         <section id="employeesSection" class="hidden">
@@ -180,7 +201,8 @@
         users: [],
         inventory: [],
         projects: [],
-        hoursRequests: []
+        hoursRequests: [],
+        selectedProfileUserId: null
       };
 
       let auth = null;
@@ -282,6 +304,87 @@
         return { day: dayHours * 150, month: monthHours * 150, year: yearHours * 150 };
       }
 
+      function formatDate(value) {
+        if (!value) return '—';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('cs-CZ');
+      }
+
+      function formatDateTime(value) {
+        if (!value) return '—';
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString('cs-CZ');
+      }
+
+      function getUserStats(user) {
+        const requests = state.hoursRequests.filter(req => req.userEmail === user.email);
+        const approved = requests.filter(req => req.status === 'approved');
+        const pending = requests.filter(req => req.status === 'pending');
+        const rejected = requests.filter(req => req.status === 'rejected');
+        const approvedHours = approved.reduce((sum, req) => sum + Number(req.hours || 0), 0);
+        const pendingHours = pending.reduce((sum, req) => sum + Number(req.hours || 0), 0);
+        const rejectedHours = rejected.reduce((sum, req) => sum + Number(req.hours || 0), 0);
+        const dates = approved.map(req => req.approvedAt || req.createdAt).filter(Boolean).sort((a, b) => new Date(a) - new Date(b));
+
+        const weekly = [];
+        for (let i = 6; i >= 0; i -= 1) {
+          const day = new Date();
+          day.setDate(day.getDate() - i);
+          const key = day.toISOString().split('T')[0];
+          const value = approved.filter(req => (req.approvedAt || req.createdAt || '').split('T')[0] === key).reduce((sum, req) => sum + Number(req.hours || 0), 0);
+          weekly.push({ label: day.toLocaleDateString('cs-CZ', { day: '2-digit' }), value });
+        }
+
+        const monthly = [];
+        for (let i = 5; i >= 0; i -= 1) {
+          const monthDate = new Date();
+          monthDate.setMonth(monthDate.getMonth() - i, 1);
+          const label = monthDate.toLocaleDateString('cs-CZ', { month: 'short' });
+          const value = approved.filter(req => {
+            const date = new Date(req.approvedAt || req.createdAt);
+            return date.getMonth() === monthDate.getMonth() && date.getFullYear() === monthDate.getFullYear();
+          }).reduce((sum, req) => sum + Number(req.hours || 0), 0);
+          monthly.push({ label, value });
+        }
+
+        const yearly = [];
+        const year = new Date().getFullYear();
+        for (let month = 0; month < 12; month += 1) {
+          const monthDate = new Date(year, month, 1);
+          const label = monthDate.toLocaleDateString('cs-CZ', { month: 'short' });
+          const value = approved.filter(req => {
+            const date = new Date(req.approvedAt || req.createdAt);
+            return date.getMonth() === month && date.getFullYear() === year;
+          }).reduce((sum, req) => sum + Number(req.hours || 0), 0);
+          yearly.push({ label, value });
+        }
+
+        return {
+          requests,
+          approvedHours,
+          pendingHours,
+          rejectedHours,
+          dates,
+          weekly,
+          monthly,
+          yearly
+        };
+      }
+
+      function buildChartMarkup(series) {
+        const maxValue = Math.max(1, ...series.map(item => item.value));
+        return `
+          <div class="chart-bars">
+            ${series.map(item => `
+              <div class="chart-col">
+                <div class="chart-bar" style="height:${Math.max(6, (item.value / maxValue) * 100)}%"></div>
+                <span class="chart-label">${item.label}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
       function render() {
         document.getElementById('currentUserBadge').textContent = state.currentUser ? `${state.currentUser.name} · ${state.currentUser.role}` : 'Přihlášen';
         renderDashboard();
@@ -290,12 +393,13 @@
         renderInventory();
         renderProjects();
         renderProfile();
+        renderProfileModal();
       }
 
       function renderDashboard() {
         const container = document.getElementById('employeeCards');
         container.innerHTML = state.users.map(user => `
-          <div class="card">
+          <div class="card clickable-card" onclick="openUserProfile('${user.id}')">
             <div class="employee-card">
               <div>
                 <strong>${user.name}</strong><br><span class="small">${user.role === 'admin' ? 'Admin' : 'Pracovník'}</span>
@@ -314,7 +418,7 @@
       function renderEmployees() {
         const list = document.getElementById('employeeList');
         list.innerHTML = state.users.map(user => `
-          <div class="card">
+          <div class="card clickable-card" onclick="openUserProfile('${user.id}')">
             <div class="employee-card">
               <div><strong>${user.name}</strong><br><span class="small">${user.email}</span></div>
               <img class="profile-photo" src="${user.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.name)}" alt="avatar" />
@@ -336,6 +440,7 @@
             <div class="card" style="margin-top:10px;">
               <strong>${req.userEmail}</strong><br>
               <span class="small">${req.hours} h · ${req.description}</span>
+              <div class="small" style="margin-top:6px;">Zapsáno: ${formatDateTime(req.createdAt)}</div>
               <div style="margin-top:10px;">
                 <button class="btn btn-success" onclick="approveRequest('${req.id}')">Schválit</button>
                 <button class="btn btn-danger" onclick="rejectRequest('${req.id}')">Odmítnout</button>
@@ -348,6 +453,7 @@
             <div class="card" style="margin-top:10px;">
               <strong>${req.description}</strong><br>
               <span class="small">${req.hours} h · ${req.status === 'approved' ? 'Schváleno' : req.status === 'rejected' ? 'Odmítnuto' : 'Čeká na schválení'}</span>
+              <div class="small" style="margin-top:6px;">Zapsáno: ${formatDateTime(req.createdAt)}</div>
             </div>
           `).join('');
         }
@@ -407,6 +513,63 @@
             </div>
           </div>
         `;
+      }
+
+      function renderProfileModal() {
+        const modal = document.getElementById('profileModal');
+        const title = document.getElementById('profileModalTitle');
+        const content = document.getElementById('profileModalContent');
+        if (!state.selectedProfileUserId) {
+          modal.classList.add('hidden');
+          return;
+        }
+
+        const user = state.users.find(item => item.id === state.selectedProfileUserId || item.uid === state.selectedProfileUserId || item.email === state.selectedProfileUserId);
+        if (!user) {
+          modal.classList.add('hidden');
+          return;
+        }
+
+        const stats = getUserStats(user);
+        title.textContent = `${user.name}${user.id === state.currentUser?.id ? ' (já)' : ''}`;
+        content.innerHTML = `
+          <div class="row">
+            <img class="profile-photo" src="${user.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user.name)}" alt="avatar" />
+            <div>
+              <h3>${user.name}</h3>
+              <p class="small">${user.email}</p>
+              <p>Role: ${user.role === 'admin' ? 'Admin' : 'Pracovník'}</p>
+              <p>Level: ${user.level || 1}</p>
+              <p>XP: ${user.xp || 0}</p>
+              <p>Celkem hodin: ${user.hours || 0}</p>
+            </div>
+          </div>
+          <div class="stat-list">
+            <div class="stat-pill"><strong>${stats.approvedHours} h</strong><br><span class="small">Schváleno</span></div>
+            <div class="stat-pill"><strong>${stats.pendingHours} h</strong><br><span class="small">Čeká</span></div>
+            <div class="stat-pill"><strong>${stats.rejectedHours} h</strong><br><span class="small">Odmítnuto</span></div>
+            <div class="stat-pill"><strong>${stats.dates.length}</strong><br><span class="small">Datumů záznamů</span></div>
+          </div>
+          <div class="chart-grid">
+            <div class="chart-card">
+              <strong>Týdenní graf</strong>
+              ${buildChartMarkup(stats.weekly)}
+            </div>
+            <div class="chart-card">
+              <strong>Měsíční graf</strong>
+              ${buildChartMarkup(stats.monthly)}
+            </div>
+            <div class="chart-card">
+              <strong>Roční graf</strong>
+              ${buildChartMarkup(stats.yearly)}
+            </div>
+          </div>
+          <div class="card" style="margin-top:12px;">
+            <strong>Datumy odpracovaných hodin</strong>
+            <div class="small" style="margin-top:6px;">${stats.dates.length ? stats.dates.map(item => formatDate(item)).join(' · ') : 'Žádné schválené hodiny'}</div>
+          </div>
+        `;
+        modal.classList.remove('hidden');
       }
 
       async function getUserProfile(uid) {
@@ -550,6 +713,14 @@
 
       window.showSection = showSection;
       window.showAuth = showAuth;
+      window.openUserProfile = (userId) => {
+        state.selectedProfileUserId = userId;
+        renderProfileModal();
+      };
+      window.closeProfileModal = () => {
+        state.selectedProfileUserId = null;
+        renderProfileModal();
+      };
 
       window.editInventory = (id) => {
         const item = state.inventory.find(i => i.id === id);
