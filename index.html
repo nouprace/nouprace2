@@ -100,6 +100,7 @@
         <button class="nav-btn" onclick="showSection('hours')">Zápis hodin</button>
         <button class="nav-btn" onclick="showSection('inventory')">Sklad</button>
         <button class="nav-btn" onclick="showSection('projects')">Projekty</button>
+        <button class="nav-btn" onclick="showSection('finance')">Finance</button>
         <button class="nav-btn" onclick="showSection('profile')">Profil</button>
         <button class="btn btn-danger" style="margin-top:18px;" onclick="logout()">Odhlásit</button>
       </aside>
@@ -173,6 +174,20 @@
           <div id="projectsList" class="grid"></div>
         </section>
 
+        <section id="financeSection" class="hidden">
+          <div class="section-title"><h2>Finance</h2></div>
+          <div id="financeContent"></div>
+          <div id="financeModal" class="modal-backdrop hidden">
+            <div class="modal-card card">
+              <div class="section-title">
+                <h3 id="financeModalTitle">Finance pracovníka</h3>
+                <button class="btn" onclick="closeFinanceModal()">Zavřít</button>
+              </div>
+              <div id="financeModalContent"></div>
+            </div>
+          </div>
+        </section>
+
         <section id="profileSection" class="hidden">
           <div class="section-title"><h2>Můj profil</h2></div>
           <div class="card" id="profileInfo"></div>
@@ -202,8 +217,12 @@
         inventory: [],
         projects: [],
         hoursRequests: [],
-        selectedProfileUserId: null
+        financeEntries: [],
+        selectedProfileUserId: null,
+        selectedFinanceUserId: null
       };
+
+      const HOURLY_RATE = 150;
 
       let auth = null;
       let db = null;
@@ -246,6 +265,9 @@
         return {
           users: [
             { id: 'NouCz', name: 'Nou', email: 'nou@nou.cz', password: 'grundel6', role: 'admin', xp: 0, level: 0, hours: 0, avatar: '' },
+            { id: 'tobik', name: 'Tobik', email: 'tobik@interni.noucz.cz', password: 'zmenit123', role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' },
+            { id: 'mirda', name: 'Mirda', email: 'mirda@interni.noucz.cz', password: 'zmenit123', role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' },
+            { id: 'tomas', name: 'Tomáš', email: 'tomas@interni.noucz.cz', password: 'zmenit123', role: 'worker', xp: 0, level: 1, hours: 0, avatar: '' }
           ],
           inventory: [
             { id: 'inv-1', name: 'Modřín', category: 'Dřevo', size: 'standard', quantity: 120, unit: 'm' },
@@ -258,6 +280,47 @@
           ],
           hoursRequests: [
             { id: 'req-1', userEmail: 'nou@nou.cz.cz', hours: 6, description: 'Montáž brány', status: 'pending', createdAt: new Date().toISOString() }
+          ],
+          // Předvyplněné položky podle poznámek zadaných adminem (import ze zprávy).
+          // Vše lze v sekci Finance kdykoli upravit / smazat, pokud se import v něčem neshoduje se skutečností.
+          financeEntries: [
+            // --- Tobik ---
+            { id: 'fin-tobik-1', userEmail: 'tobik@interni.noucz.cz', type: 'credit', amount: 300, note: 'Práce 2 hod (29.6.)', date: '2026-06-29', createdAt: '2026-06-29T12:00:00.000Z' },
+            { id: 'fin-tobik-2', userEmail: 'tobik@interni.noucz.cz', type: 'credit', amount: 300, note: 'Práce 2 hod (30.6.)', date: '2026-06-30', createdAt: '2026-06-30T12:00:00.000Z' },
+            { id: 'fin-tobik-3', userEmail: 'tobik@interni.noucz.cz', type: 'credit', amount: 1600, note: 'Montáž 2x á 800 Kč (import: v zápisu "2.6", opraveno na 2.7. — zkontroluj)', date: '2026-07-02', createdAt: '2026-07-02T12:00:00.000Z' },
+            { id: 'fin-tobik-4', userEmail: 'tobik@interni.noucz.cz', type: 'debit', amount: 500, note: 'Záloha (5.7.)', date: '2026-07-05', createdAt: '2026-07-05T12:00:00.000Z' },
+            { id: 'fin-tobik-5', userEmail: 'tobik@interni.noucz.cz', type: 'credit', amount: 500, note: 'Montáž (6.7.)', date: '2026-07-06', createdAt: '2026-07-06T12:00:00.000Z' },
+            { id: 'fin-tobik-6', userEmail: 'tobik@interni.noucz.cz', type: 'debit', amount: 1000, note: 'Záloha (7.7.)', date: '2026-07-07', createdAt: '2026-07-07T12:00:00.000Z' },
+            { id: 'fin-tobik-7', userEmail: 'tobik@interni.noucz.cz', type: 'credit', amount: 150, note: 'Řezání 1 hod (7.7.)', date: '2026-07-07', createdAt: '2026-07-07T12:01:00.000Z' },
+            { id: 'fin-tobik-8', userEmail: 'tobik@interni.noucz.cz', type: 'credit', amount: 300, note: 'Práce 2 hod (8.7.)', date: '2026-07-08', createdAt: '2026-07-08T12:00:00.000Z' },
+            { id: 'fin-tobik-9', userEmail: 'tobik@interni.noucz.cz', type: 'debit', amount: 1000, note: 'Záloha (17.7.)', date: '2026-07-17', createdAt: '2026-07-17T12:00:00.000Z' },
+            { id: 'fin-tobik-10', userEmail: 'tobik@interni.noucz.cz', type: 'credit', amount: 300, note: 'Řezání 2 hod (17.7.)', date: '2026-07-17', createdAt: '2026-07-17T12:01:00.000Z' },
+            // --- Mirda ---
+            { id: 'fin-mirda-1', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 150, note: 'Práce 1 hod (30.6.)', date: '2026-06-30', createdAt: '2026-06-30T12:02:00.000Z' },
+            { id: 'fin-mirda-2', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 300, note: 'Práce 2 hod (import: v zápisu "2.6", opraveno na 2.7. — zkontroluj)', date: '2026-07-02', createdAt: '2026-07-02T12:02:00.000Z' },
+            { id: 'fin-mirda-3', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 150, note: 'Nátěr 1 hod (datum nejisté, přiřazeno k 2.7. — zkontroluj)', date: '2026-07-02', createdAt: '2026-07-02T12:03:00.000Z' },
+            { id: 'fin-mirda-4', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 450, note: 'Práce 3 hod (4.7.)', date: '2026-07-04', createdAt: '2026-07-04T12:00:00.000Z' },
+            { id: 'fin-mirda-5', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 450, note: 'Práce 3 hod (5.7.)', date: '2026-07-05', createdAt: '2026-07-05T12:00:00.000Z' },
+            { id: 'fin-mirda-6', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 300, note: 'Práce 2 hod (6.7.)', date: '2026-07-06', createdAt: '2026-07-06T12:00:00.000Z' },
+            { id: 'fin-mirda-7', userEmail: 'mirda@interni.noucz.cz', type: 'debit', amount: 500, note: 'Záloha (7.7.)', date: '2026-07-07', createdAt: '2026-07-07T12:00:00.000Z' },
+            { id: 'fin-mirda-8', userEmail: 'mirda@interni.noucz.cz', type: 'debit', amount: 400, note: 'Odečet z předešlého (import: "Minus 400 predesle" — nejisté, zkontroluj)', date: '2026-07-07', createdAt: '2026-07-07T12:01:00.000Z' },
+            { id: 'fin-mirda-9', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 150, note: 'Práce 1 hod (7.7.)', date: '2026-07-07', createdAt: '2026-07-07T12:02:00.000Z' },
+            { id: 'fin-mirda-10', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 150, note: 'Nátěr 1 hod (8.7.)', date: '2026-07-08', createdAt: '2026-07-08T12:00:00.000Z' },
+            { id: 'fin-mirda-11', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 150, note: 'Nátěr 1 hod (9.7.)', date: '2026-07-09', createdAt: '2026-07-09T12:00:00.000Z' },
+            { id: 'fin-mirda-12', userEmail: 'mirda@interni.noucz.cz', type: 'debit', amount: 200, note: 'Záloha (12.7.)', date: '2026-07-12', createdAt: '2026-07-12T12:00:00.000Z' },
+            { id: 'fin-mirda-13', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 200, note: 'Nátěr (15.7.)', date: '2026-07-15', createdAt: '2026-07-15T12:00:00.000Z' },
+            { id: 'fin-mirda-14', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 200, note: 'Nátěr (16.7.)', date: '2026-07-16', createdAt: '2026-07-16T12:00:00.000Z' },
+            { id: 'fin-mirda-15', userEmail: 'mirda@interni.noucz.cz', type: 'debit', amount: 1000, note: 'Záloha (17.7.)', date: '2026-07-17', createdAt: '2026-07-17T12:00:00.000Z' },
+            { id: 'fin-mirda-16', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 450, note: 'Nátěr 3 hod (17.7.)', date: '2026-07-17', createdAt: '2026-07-17T12:01:00.000Z' },
+            { id: 'fin-mirda-17', userEmail: 'mirda@interni.noucz.cz', type: 'credit', amount: 450, note: 'Natírání 3 hod (18.7.)', date: '2026-07-18', createdAt: '2026-07-18T12:00:00.000Z' },
+            // --- Tomáš ---
+            { id: 'fin-tomas-1', userEmail: 'tomas@interni.noucz.cz', type: 'credit', amount: 300, note: 'Práce 2 hod (6.7.)', date: '2026-07-06', createdAt: '2026-07-06T12:00:00.000Z' },
+            { id: 'fin-tomas-2', userEmail: 'tomas@interni.noucz.cz', type: 'credit', amount: 150, note: 'Nátěr 1 hod (9.7.)', date: '2026-07-09', createdAt: '2026-07-09T12:00:00.000Z' },
+            { id: 'fin-tomas-3', userEmail: 'tomas@interni.noucz.cz', type: 'credit', amount: 200, note: 'Nátěr (15.7.)', date: '2026-07-15', createdAt: '2026-07-15T12:00:00.000Z' },
+            { id: 'fin-tomas-4', userEmail: 'tomas@interni.noucz.cz', type: 'credit', amount: 200, note: 'Nátěr (16.7.)', date: '2026-07-16', createdAt: '2026-07-16T12:00:00.000Z' },
+            { id: 'fin-tomas-5', userEmail: 'tomas@interni.noucz.cz', type: 'debit', amount: 1000, note: 'Záloha (17.7.)', date: '2026-07-17', createdAt: '2026-07-17T12:00:00.000Z' },
+            { id: 'fin-tomas-6', userEmail: 'tomas@interni.noucz.cz', type: 'credit', amount: 450, note: 'Nátěr 3 hod (17.7.)', date: '2026-07-17', createdAt: '2026-07-17T12:01:00.000Z' },
+            { id: 'fin-tomas-7', userEmail: 'tomas@interni.noucz.cz', type: 'credit', amount: 450, note: 'Natírání 3 hod (18.7.)', date: '2026-07-18', createdAt: '2026-07-18T12:00:00.000Z' }
           ]
         };
       }
@@ -278,6 +341,7 @@
         state.inventory = data.inventory || [];
         state.projects = data.projects || [];
         state.hoursRequests = data.hoursRequests || [];
+        state.financeEntries = data.financeEntries || [];
 
         // Neměnit currentUser při načítání, jen pokud je potřeba inicializace
         if (!skipCurrentUser) {
@@ -328,6 +392,7 @@
           inventory: state.inventory,
           projects: state.projects,
           hoursRequests: state.hoursRequests,
+          financeEntries: state.financeEntries,
           authUserId: state.currentUser ? (state.currentUser.id || state.currentUser.uid || state.currentUser.email) : null
         };
 
@@ -350,7 +415,7 @@
         document.querySelectorAll('main section').forEach(sec => sec.classList.add('hidden'));
         document.getElementById(section + 'Section').classList.remove('hidden');
         document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelectorAll('.nav-btn')[['dashboard','employees','hours','inventory','projects','profile'].indexOf(section)].classList.add('active');
+        document.querySelectorAll('.nav-btn')[['dashboard','employees','hours','inventory','projects','finance','profile'].indexOf(section)].classList.add('active');
       }
 
       function showAuth(type) {
@@ -434,6 +499,17 @@
         };
       }
 
+      function getUserFinanceStats(user) {
+        const entries = state.financeEntries
+          .filter(entry => (entry.userEmail || '').toLowerCase() === (user.email || '').toLowerCase())
+          .slice()
+          .sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt));
+        const credit = entries.filter(e => e.type === 'credit').reduce((sum, e) => sum + Number(e.amount || 0), 0);
+        const debit = entries.filter(e => e.type === 'debit').reduce((sum, e) => sum + Number(e.amount || 0), 0);
+        const balance = credit - debit;
+        return { entries, credit, debit, balance };
+      }
+
       function buildChartMarkup(series) {
         const maxValue = Math.max(1, ...series.map(item => item.value));
         return `
@@ -457,6 +533,8 @@
         renderProjects();
         renderProfile();
         renderProfileModal();
+        renderFinance();
+        renderFinanceModal();
       }
 
       function renderDashboard() {
@@ -630,6 +708,116 @@
           <div class="card" style="margin-top:12px;">
             <strong>Datumy odpracovaných hodin</strong>
             <div class="small" style="margin-top:6px;">${stats.dates.length ? stats.dates.map(item => formatDate(item)).join(' · ') : 'Žádné schválené hodiny'}</div>
+          </div>
+        `;
+        modal.classList.remove('hidden');
+      }
+
+      function renderFinance() {
+        const container = document.getElementById('financeContent');
+        if (!container || !state.currentUser) return;
+        const isAdmin = state.currentUser.role === 'admin';
+
+        if (isAdmin) {
+          const rows = state.users.map(user => {
+            const stats = getUserFinanceStats(user);
+            const balanceClass = stats.balance > 0 ? 'status-ok' : stats.balance < 0 ? 'status-bad' : '';
+            return `
+              <tr>
+                <td>${user.name}</td>
+                <td>${stats.credit.toLocaleString('cs-CZ')} Kč</td>
+                <td>${stats.debit.toLocaleString('cs-CZ')} Kč</td>
+                <td class="${balanceClass}"><strong>${stats.balance.toLocaleString('cs-CZ')} Kč</strong></td>
+                <td><button class="btn btn-primary" onclick="openFinanceModal('${user.id}')">Spravovat</button></td>
+              </tr>
+            `;
+          }).join('');
+          container.innerHTML = `
+            <div class="card">
+              <p class="small">Přehled odpracovaného (přičteno) a vyplacených záloh (odečteno). Sloupec "Zbývá uhradit" ukazuje, kolik komu ještě zbývá vyplatit.</p>
+              <table>
+                <thead><tr><th>Jméno</th><th>Odpracováno</th><th>Zálohy / odečty</th><th>Zbývá uhradit</th><th>Akce</th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          `;
+        } else {
+          const stats = getUserFinanceStats(state.currentUser);
+          container.innerHTML = `
+            <div class="card">
+              <div class="stat-list">
+                <div class="stat-pill"><strong>${stats.credit.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Odpracováno</span></div>
+                <div class="stat-pill"><strong>${stats.debit.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Zálohy</span></div>
+                <div class="stat-pill"><strong>${stats.balance.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Zbývá uhradit</span></div>
+              </div>
+            </div>
+            <div class="card" style="margin-top:16px;">
+              <h3>Historie</h3>
+              ${stats.entries.length ? stats.entries.map(entry => `
+                <div class="card" style="margin-top:10px;">
+                  <strong class="${entry.type === 'credit' ? 'status-ok' : 'status-bad'}">${entry.type === 'credit' ? '+' : '-'}${Number(entry.amount).toLocaleString('cs-CZ')} Kč</strong><br>
+                  <span class="small">${entry.note || ''}</span>
+                  <div class="small" style="margin-top:6px;">${formatDate(entry.date)}</div>
+                </div>
+              `).join('') : '<p class="small">Zatím žádné záznamy.</p>'}
+            </div>
+          `;
+        }
+      }
+
+      function renderFinanceModal() {
+        const modal = document.getElementById('financeModal');
+        const title = document.getElementById('financeModalTitle');
+        const content = document.getElementById('financeModalContent');
+        if (!state.selectedFinanceUserId || state.currentUser?.role !== 'admin') {
+          modal.classList.add('hidden');
+          return;
+        }
+        const user = state.users.find(item => item.id === state.selectedFinanceUserId || item.uid === state.selectedFinanceUserId || item.email === state.selectedFinanceUserId);
+        if (!user) {
+          modal.classList.add('hidden');
+          return;
+        }
+        const stats = getUserFinanceStats(user);
+        title.textContent = `Finance — ${user.name}`;
+        content.innerHTML = `
+          <div class="stat-list">
+            <div class="stat-pill"><strong>${stats.credit.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Odpracováno</span></div>
+            <div class="stat-pill"><strong>${stats.debit.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Zálohy / odečty</span></div>
+            <div class="stat-pill"><strong>${stats.balance.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Zbývá uhradit</span></div>
+          </div>
+          <form id="financeEntryForm" style="margin-top:16px;" onsubmit="return false;">
+            <div class="row">
+              <div class="col">
+                <label>Typ
+                  <select id="financeEntryType">
+                    <option value="credit">Přičíst (odpracováno / montáž / nátěr…)</option>
+                    <option value="debit">Odečíst (záloha / vyplaceno)</option>
+                  </select>
+                </label>
+              </div>
+              <div class="col"><label>Částka (Kč)<input type="number" id="financeEntryAmount" min="1" required /></label></div>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <div class="col"><label>Popis<input type="text" id="financeEntryNote" placeholder="např. Montáž brány, Záloha, Nátěr 2 hod" /></label></div>
+              <div class="col"><label>Datum<input type="date" id="financeEntryDate" value="${new Date().toISOString().split('T')[0]}" /></label></div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:12px;" onclick="submitFinanceEntry('${user.id}')">Přidat záznam</button>
+          </form>
+          <div style="margin-top:16px;">
+            <h3>Záznamy</h3>
+            ${stats.entries.length ? stats.entries.map(entry => `
+              <div class="card" style="margin-top:10px;">
+                <div class="row" style="justify-content:space-between; align-items:center; flex-wrap:nowrap;">
+                  <div>
+                    <strong class="${entry.type === 'credit' ? 'status-ok' : 'status-bad'}">${entry.type === 'credit' ? '+' : '-'}${Number(entry.amount).toLocaleString('cs-CZ')} Kč</strong><br>
+                    <span class="small">${entry.note || ''}</span>
+                    <div class="small">${formatDate(entry.date)}</div>
+                  </div>
+                  <button class="btn btn-danger" onclick="deleteFinanceEntry('${entry.id}')">Smazat</button>
+                </div>
+              </div>
+            `).join('') : '<p class="small">Zatím žádné záznamy.</p>'}
           </div>
         `;
         modal.classList.remove('hidden');
@@ -834,6 +1022,50 @@
       window.closeProfileModal = () => {
         state.selectedProfileUserId = null;
         renderProfileModal();
+      };
+
+      window.openFinanceModal = (userId) => {
+        if (state.currentUser?.role !== 'admin') return;
+        state.selectedFinanceUserId = userId;
+        renderFinanceModal();
+      };
+
+      window.closeFinanceModal = () => {
+        state.selectedFinanceUserId = null;
+        renderFinanceModal();
+      };
+
+      window.submitFinanceEntry = async (userId) => {
+        if (state.currentUser?.role !== 'admin') return;
+        const user = state.users.find(u => u.id === userId || u.uid === userId || u.email === userId);
+        if (!user) return;
+        const type = document.getElementById('financeEntryType').value;
+        const amount = Number(document.getElementById('financeEntryAmount').value);
+        const note = document.getElementById('financeEntryNote').value;
+        const date = document.getElementById('financeEntryDate').value || new Date().toISOString().split('T')[0];
+        if (!amount || amount <= 0) {
+          alert('Zadej platnou částku větší než 0.');
+          return;
+        }
+        state.financeEntries.unshift({
+          id: createId('fin'),
+          userEmail: user.email,
+          type,
+          amount,
+          note,
+          date,
+          createdAt: new Date().toISOString()
+        });
+        await saveData();
+        render();
+      };
+
+      window.deleteFinanceEntry = async (id) => {
+        if (state.currentUser?.role !== 'admin') return;
+        if (!confirm('Opravdu smazat tento záznam?')) return;
+        state.financeEntries = state.financeEntries.filter(e => e.id !== id);
+        await saveData();
+        render();
       };
 
       window.editInventory = async (id) => {
