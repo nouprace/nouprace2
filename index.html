@@ -429,7 +429,7 @@
         const dayHours = approved.filter(req => req.approvedAt && new Date(req.approvedAt).toDateString() === now.toDateString()).reduce((sum, req) => sum + Number(req.hours || 0), 0);
         const monthHours = approved.filter(req => req.approvedAt && new Date(req.approvedAt).getMonth() === now.getMonth() && new Date(req.approvedAt).getFullYear() === now.getFullYear()).reduce((sum, req) => sum + Number(req.hours || 0), 0);
         const yearHours = approved.filter(req => req.approvedAt && new Date(req.approvedAt).getFullYear() === now.getFullYear()).reduce((sum, req) => sum + Number(req.hours || 0), 0);
-        return { day: dayHours * 150, month: monthHours * 150, year: yearHours * 150 };
+        return { day: dayHours * HOURLY_RATE, month: monthHours * HOURLY_RATE, year: yearHours * HOURLY_RATE };
       }
 
       function formatDate(value) {
@@ -539,7 +539,10 @@
 
       function renderDashboard() {
         const container = document.getElementById('employeeCards');
-        container.innerHTML = state.users.map(user => `
+        const isAdmin = state.currentUser?.role === 'admin';
+        container.innerHTML = state.users.map(user => {
+          const finance = isAdmin ? getUserFinanceStats(user) : null;
+          return `
           <div class="card clickable-card" onclick="openUserProfile('${user.id}')">
             <div class="employee-card">
               <div>
@@ -551,14 +554,19 @@
               <div>Level: ${user.level || 1}</div>
               <div>XP: ${user.xp || 0}</div>
               <div>Hodiny: ${user.hours || 0}</div>
+              ${finance ? `<div class="${finance.balance > 0 ? 'status-ok' : finance.balance < 0 ? 'status-bad' : ''}">Zbývá uhradit: <strong>${finance.balance.toLocaleString('cs-CZ')} Kč</strong></div>` : ''}
             </div>
           </div>
-        `).join('');
+        `;
+        }).join('');
       }
 
       function renderEmployees() {
         const list = document.getElementById('employeeList');
-        list.innerHTML = state.users.map(user => `
+        const isAdmin = state.currentUser?.role === 'admin';
+        list.innerHTML = state.users.map(user => {
+          const finance = isAdmin ? getUserFinanceStats(user) : null;
+          return `
           <div class="card clickable-card" onclick="openUserProfile('${user.id}')">
             <div class="employee-card">
               <div><strong>${user.name}</strong><br><span class="small">${user.email}</span></div>
@@ -567,10 +575,11 @@
             <div style="margin-top:10px;">
               <div>Level: ${user.level || 1}</div>
               <div>XP: ${user.xp || 0}</div>
-              <div>Výdělek měsíčně: ${(((user.hours || 0) * 150)).toLocaleString('cs-CZ')} Kč</div>
+              ${finance ? `<div>Odpracováno celkem: ${finance.credit.toLocaleString('cs-CZ')} Kč</div><div class="${finance.balance > 0 ? 'status-ok' : finance.balance < 0 ? 'status-bad' : ''}">Zbývá uhradit: <strong>${finance.balance.toLocaleString('cs-CZ')} Kč</strong></div>` : ''}
             </div>
           </div>
-        `).join('');
+        `;
+        }).join('');
       }
 
       function renderHours() {
@@ -734,9 +743,9 @@
           }).join('');
           container.innerHTML = `
             <div class="card">
-              <p class="small">Přehled odpracovaného (přičteno) a vyplacených záloh (odečteno). Sloupec "Zbývá uhradit" ukazuje, kolik komu ještě zbývá vyplatit.</p>
+              <p class="small">Sloupec "Odpracováno" se plní automaticky ze schválených hodin (Zápis hodin) a dá se doplnit i ručně (montáž, nátěr...). "Celkem vyplaceno" jsou všechny zálohy a výplaty. "Zbývá uhradit" = kolik komu ještě zbývá vyplatit.</p>
               <table>
-                <thead><tr><th>Jméno</th><th>Odpracováno</th><th>Zálohy / odečty</th><th>Zbývá uhradit</th><th>Akce</th></tr></thead>
+                <thead><tr><th>Jméno</th><th>Odpracováno</th><th>Celkem vyplaceno</th><th>Zbývá uhradit</th><th>Akce</th></tr></thead>
                 <tbody>${rows}</tbody>
               </table>
             </div>
@@ -747,7 +756,7 @@
             <div class="card">
               <div class="stat-list">
                 <div class="stat-pill"><strong>${stats.credit.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Odpracováno</span></div>
-                <div class="stat-pill"><strong>${stats.debit.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Zálohy</span></div>
+                <div class="stat-pill"><strong>${stats.debit.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Celkem vyplaceno</span></div>
                 <div class="stat-pill"><strong>${stats.balance.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Zbývá uhradit</span></div>
               </div>
             </div>
@@ -783,7 +792,7 @@
         content.innerHTML = `
           <div class="stat-list">
             <div class="stat-pill"><strong>${stats.credit.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Odpracováno</span></div>
-            <div class="stat-pill"><strong>${stats.debit.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Zálohy / odečty</span></div>
+            <div class="stat-pill"><strong>${stats.debit.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Celkem vyplaceno</span></div>
             <div class="stat-pill"><strong>${stats.balance.toLocaleString('cs-CZ')} Kč</strong><br><span class="small">Zbývá uhradit</span></div>
           </div>
           <form id="financeEntryForm" style="margin-top:16px;" onsubmit="return false;">
@@ -1086,6 +1095,7 @@
       };
 
       window.approveRequest = async (id) => {
+        if (state.currentUser?.role !== 'admin') return;
         const req = state.hoursRequests.find(r => r.id === id);
         if (!req || req.status !== 'pending') return;
         const user = state.users.find(u => (u.email || '').toLowerCase() === (req.userEmail || '').toLowerCase());
@@ -1101,12 +1111,24 @@
           if (state.currentUser?.id === user.id) {
             state.currentUser = normalizeUser({ ...user });
           }
+          // Propojení se sekcí Finance: schválené hodiny se rovnou přičtou jako "Odpracováno".
+          state.financeEntries.unshift({
+            id: createId('fin'),
+            userEmail: user.email,
+            type: 'credit',
+            amount: Number(req.hours || 0) * HOURLY_RATE,
+            note: `Schváleno ze zápisu hodin: ${req.description} (${req.hours} h × ${HOURLY_RATE} Kč)`,
+            date: new Date().toISOString().split('T')[0],
+            createdAt: new Date().toISOString(),
+            sourceRequestId: req.id
+          });
         }
         await saveData();
         render();
       };
 
       window.rejectRequest = async (id) => {
+        if (state.currentUser?.role !== 'admin') return;
         const req = state.hoursRequests.find(r => r.id === id);
         if (!req || req.status !== 'pending') return;
         req.status = 'rejected';
